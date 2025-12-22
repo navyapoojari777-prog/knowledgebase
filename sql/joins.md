@@ -886,6 +886,380 @@ Pitfalls:
 •	Confusing CROSS JOIN with INNER JOIN or LEFT JOIN
 •	Assuming SQL will automatically infer the join condition
 
+21. Error : Invalid use of NATURAL JOIN with ON clause
+Explanations:
+This error occurs because NATURAL JOIN and JOIN ... ON are two different and mutually exclusive ways of defining join conditions in SQL. NATURAL JOIN automatically determines the join condition by matching all columns that share the same name and compatible data types between the tables. Since the database engine derives the join logic implicitly, adding an ON clause is syntactically invalid and results in error code 42601. In contrast, JOIN ... ON requires the developer to explicitly specify how the tables should be joined. Mixing implicit and explicit join logic violates SQL syntax rules and is therefore rejected by the database engine.
+
+Use cases:
+•	NATURAL JOIN can be used in quick exploratory queries where tables are intentionally designed with identical column names and stable schemas.
+•	It may be acceptable for small internal tools, prototypes, or learning scenarios where schema changes are unlikely.
+•	JOIN ... ON is used in production systems where precise control over join logic is required.
+
+Examples where applicable:
+Invalid usage that causes the error:
+SELECT *
+FROM orders
+NATURAL JOIN customers
+ON orders.customer_id = customers.customer_id;
+
+Valid usage with NATURAL JOIN only:
+SELECT *
+FROM orders
+NATURAL JOIN customers;
+
+Best practices:
+•	Write explicit join conditions to ensure predictable and readable SQL.
+•	Use NATURAL JOIN only when column naming conventions are strictly controlled.
+•	Follow company coding standards that emphasize clarity over brevity.
+Pitfalls:
+•	Schema changes (adding a same-named column) can silently alter query results.
+•	Debugging becomes difficult because join logic is hidden.
+•	Considered unsafe and unprofessional in most corporate SQL codebases.
+
+22. ERROR: NATURAL JOIN requires matching column names
+Explanations:
+This error occurs when a NATURAL JOIN is used between two tables that do not share any column names in common. NATURAL JOIN works only by automatically matching columns that have identical names and compatible data types in both tables. If no such columns exist, the database cannot infer a join condition and raises error 42601. 
+Unlike explicit joins, there is no way to tell the database which columns to use because NATURAL JOIN does not allow an ON clause. From a company perspective, this error highlights a mismatch between schema design and query intent.
+Use cases:
+•	NATURAL JOIN is suitable only when tables are intentionally designed with shared column names such as user_id, order_id, or department_id.
+•	It may be used in tightly controlled internal schemas where naming conventions are enforced across all tables.
+•	It can be acceptable for short-lived analytics queries or prototypes where schemas are stable and well understood.
+Examples where applicable:
+Invalid usage that triggers the error (no matching column names):
+SELECT *
+FROM employees
+NATURAL JOIN departments;
+
+(Example: employees.emp_id and departments.dept_id do not match by name.)
+
+Valid usage after aligning column names:
+SELECT *
+FROM employees
+NATURAL JOIN departments;
+(Works only if both tables contain department_id.)
+
+Recommended enterprise-safe alternative:
+SELECT *
+FROM employees e
+JOIN departments d
+ON e.dept_id = d.department_id;
+
+Example of accidental failure:
+If one table renames user_id to uid, an existing NATURAL JOIN will immediately fail with this error.
+
+Best practices:
+•	Prefer JOIN ... ON for all production and company-owned SQL.
+•	Use explicit join conditions to remove dependency on column naming.
+•	Treat NATURAL JOIN as a convenience feature, not a standard practice.
+Pitfalls
+•	Queries break when column names diverge, even if data relationships are valid.
+•	Hidden join logic reduces readability and maintainability.
+•	New developers may not realize why a join fails without shared column names.
+
+23. ERROR: Cannot use USING clause with specified join type
+Explanations:
+This error occurs when the USING clause is applied to a join type or scenario where it is not supported or where the join condition is more complex than a simple equality match. The USING clause is designed for simple equi-joins where both tables share a column with the same name, and the join condition is implicitly table1.column = table2.column. 
+When a query attempts to use USING with join types that require explicit logic, additional conditions, or expressions, the SQL engine raises error 42601. From a company standpoint, this indicates an attempt to oversimplify join logic in a place where clarity and control are required.
+Use cases:
+•	USING is appropriate for simple joins where:
+o	Both tables have an identically named column.
+o	The join condition is a straightforward equality check.
+o	No additional filters or expressions are required in the join condition.
+•	ON is required when:
+o	The join involves multiple columns.
+o	Column names differ across tables.
+o	Additional conditions, comparisons, or expressions are part of the join logic.
+o	The query is part of production or business-critical code.
+
+Examples where applicable:
+Invalid usage that triggers the error:
+SELECT *
+FROM orders
+LEFT JOIN customers USING (customer_id, country);
+(If the join type or database does not support USING with multiple or complex conditions.)
+
+Valid usage with USING for a simple case:
+
+
+SELECT *
+FROM orders
+JOIN customers USING (customer_id);
+Recommended enterprise-safe alternative using ON:
+SELECT *
+FROM orders o
+LEFT JOIN customers c
+ON o.customer_id = c.customer_id
+AND o.country = c.country;
+
+Best practices:
+•	Use USING only for trivial joins with one shared column.
+•	Avoid clever shorthand that hides business logic.
+•	Follow team SQL standards that prioritize clarity over brevity.
+Pitfalls
+•	USING cannot express complex or conditional join logic.
+•	Queries become harder to extend as requirements grow.
+•	Developers may incorrectly assume USING is interchangeable with ON.
+•	Portability issues arise across different databases and join types.
+
+24. ERROR: column "column_name" in USING clause must appear in both tables
+Explanations:
+This error occurs when a USING clause references a column that does not exist in both joined tables. The USING clause is a shorthand join syntax that implicitly means table1.column = table2.column. For this to work, the column name must be present in each table with the same name and a compatible data type. 
+If the column is missing from either table or is misspelled, the database raises error 42703. In company environments, this typically signals schema drift, incorrect assumptions about table structures, or careless SQL that has not been validated against the actual schema.
+Use cases:
+•	USING is suitable only when:
+o	Both tables intentionally share a column with the same name (e.g., user_id).
+o	The join logic is a simple equality match.
+o	The schema is stable and well documented.
+•	It is often used in small, controlled datasets or internal analytics where naming conventions are strictly enforced.
+Examples where applicable:
+Invalid usage that triggers the error:
+SELECT *
+FROM orders
+JOIN customers USING (customer_id);
+(Example: orders.customer_id exists, but customers.customer_id does not.)
+Valid usage where the column exists in both tables:
+SELECT *
+FROM orders
+JOIN customers USING (customer_id);
+(Both tables contain customer_id.)
+Enterprise-safe alternative using ON:
+SELECT *
+FROM orders o
+JOIN customers c
+ON o.customer_id = c.id;
+Example of failure due to schema change:
+If customers.customer_id is renamed to id, existing queries using USING (customer_id) will fail immediately.
+Best practices:
+•	Prefer JOIN ... ON for production and company SQL code.
+•	Validate table schemas before using USING.
+•	Avoid relying on implicit column matching in long-lived queries.
+•	Use explicit aliases and column references for clarity.
+Pitfalls:
+•	Debugging is slower because the join condition is implicit.
+•	New developers may not know why the join fails.
+•	Many companies prohibit USING to prevent these avoidable errors.
+
+25. ERROR: Too many tables in FROM clause
+Explanations
+This error occurs when a SQL query includes more tables in the FROM clause (or JOINs) than the database engine is configured to handle in a single query. Databases enforce internal limits to protect memory usage, query planning time, and execution stability. Hitting error 54001 usually indicates an overly complex query where too many tables are joined directly, often due to poor query design, excessive denormalization logic at query time, or attempting to solve multiple business problems in one SQL statement. In company environments, this is treated as a design flaw, not a minor syntax issue.
+Use cases
+•	Large reporting queries where developers try to join many dimension and fact tables at once.
+•	Legacy systems where business logic is embedded in a single massive SQL query.
+•	Situations where subqueries, temporary tables, or views should have been used instead of flat joins.
+Examples where applicable
+Problematic query pattern:
+SELECT * FROM t1
+JOIN t2 ON ...
+JOIN t3 ON ...
+JOIN t4 ON ...
+JOIN t5 ON ... ;
+Refactored approach using subqueries:
+SELECT *FROM ( SELECT *FROM t1
+    JOIN t2 ON ...
+    JOIN t3 ON ...) base
+JOIN t4 ON ...
+JOIN t5 ON ...;
+
+Best practices:
+•	Break complex queries into smaller, logical steps.
+•	Join only tables that are strictly required for the result set.
+•	Pre-aggregate data instead of joining raw tables repeatedly.
+•	Treat database limits as design constraints, not obstacles to bypass.
+Pitfalls:
+•	Trying to “fix” the issue by increasing database limits instead of fixing query design.
+•	Creating unreadable, unmaintainable SQL that no one can debug safely.
+•	Higher risk of incorrect results due to accidental Cartesian joins.
+
+26. ERROR: join order optimization failed
+Explanations:
+This error indicates that the query planner failed while trying to determine an efficient execution order for the joins in a SQL statement. The optimizer explores different join permutations to find the lowest-cost plan. When there are too many joined tables, overly complex join predicates, or conflicting constraints, the planner can exceed its internal limits and abort with error XX000. 
+Although increasing join_collapse_limit can allow the planner to consider more join order combinations, companies treat this error as a query design and modeling problem, not merely a configuration issue.
+Use cases:
+•	Complex reporting or analytics queries joining many tables at once.
+•	Auto-generated SQL from ORMs that produce deeply nested or redundant joins.
+•	Queries with mixed join types (INNER, LEFT, RIGHT) and nontrivial predicates.
+•	Scenarios where developers try to express multiple business workflows in a single query.
+Examples where applicable:
+Problematic pattern:
+SELECT *
+FROM a
+JOIN b ON ...
+JOIN c ON ...
+JOIN d ON ...
+JOIN e ON ...
+JOIN f ON ...
+WHERE (complex conditions across multiple tables);
+Simplified approach using staged joins:
+WITH base AS (
+    SELECT *
+    FROM a
+    JOIN b ON ...
+    JOIN c ON ...
+)
+SELECT *
+FROM base
+JOIN d ON ...
+JOIN e ON ...;
+Alternative by reducing join complexity:
+SELECT *
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+WHERE EXISTS (
+    SELECT 1
+    FROM payments p
+    WHERE p.order_id = o.id
+);
+Configuration-based workaround (not the preferred fix):
+SET join_collapse_limit = 12;
+Best practices
+•	Reduce the number of tables joined in a single query.
+•	Use EXPLAIN to validate join order and planner behavior.
+•	Treat planner configuration changes as last-resort, not default solutions.
+Pitfalls
+•	Increasing join_collapse_limit can significantly increase planning time.
+•	Masking poor query design with configuration tweaks leads to unstable performance.
+•	Queries may pass in development but fail in production under heavier load.
+
+
+
+
+27. ERROR: out of memory during JOIN operation
+Explanations:
+This error occurs when the database runs out of memory while executing a JOIN operation. During joins—especially hash joins or merge joins—the database must allocate working memory to build hash tables, sort rows, or buffer intermediate results. 
+If the data volume is large or join columns are not indexed, the operation may exceed the memory allocated by work_mem, resulting in error 53200. In company environments, this is treated as a performance and capacity planning issue, not just a configuration mistake.
+Use cases:
+•	Joining large fact tables without proper indexes.
+•	Analytics or reporting queries that scan and join millions of rows.
+•	Batch jobs running multiple memory-heavy joins concurrently.
+Examples where applicable:
+Memory-intensive join that may fail:
+SELECT *
+FROM orders o
+JOIN order_items oi ON o.id = oi.order_id;
+
+Query refactor to reduce join size:
+SELECT *FROM orders o
+WHERE EXISTS (
+    SELECT 1
+    FROM order_items oi
+    	    WHERE oi.order_id = o.id );
+Best practices:
+•	Always index columns used in JOIN conditions.
+•	Select only required columns instead of using SELECT *.
+•	Filter data before joining to reduce intermediate result size.
+•	Increase work_mem cautiously and per session when needed.
+
+Pitfalls:
+•	Blindly increasing work_mem can exhaust system RAM under concurrency.
+•	Large joins may succeed in development but fail in production scale.
+•	Ignoring query plans leads to repeated memory-related failures.
+
+28. ERROR: temporary file size exceeds temp_file_limit
+Explanations:
+This error occurs when a query generates temporary data on disk that exceeds the configured temp_file_limit. Temporary files are created when operations such as large JOINs, sorts, hash aggregations, or ORDER BY clauses cannot be fully handled in memory. 
+When intermediate results grow too large—often due to unfiltered joins, missing indexes, or excessive data volume—the database spills to disk and eventually hits the size limit, raising error 53400. In company environments, this is considered a query efficiency and resource governance issue, not just a configuration problem.
+Use cases:
+•	Large JOINs between fact tables without restrictive filters.
+•	Reporting or analytics queries that sort or aggregate massive datasets.
+•	Queries using ORDER BY, GROUP BY, or DISTINCT on large result sets.
+•	ETL or batch jobs that process high data volumes in a single step.
+Examples where applicable:
+Problematic query pattern:
+SELECT *
+FROM orders o
+JOIN order_items oi ON o.id = oi.order_id
+ORDER BY oi.created_at;
+Configuration-based workaround (use cautiously):
+SET temp_file_limit = '5GB';
+Refactoring to reduce temp usage:
+SELECT *FROM (
+    SELECT * FROM orders
+    WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+) o JOIN order_items oi ON o.id = oi.order_id;
+
+Best practices:
+•	Filter rows as early as possible before JOINs.
+•	Avoid SELECT *; limit columns to what is needed.
+•	Add indexes to JOIN, ORDER BY, and GROUP BY columns.
+•	Treat temp_file_limit increases as a last resort.
+
+
+Pitfalls
+•	Increasing temp_file_limit can hide inefficient queries.
+•	Queries may succeed in isolation but fail under concurrent load.
+•	Temporary files can fill disks, impacting other workloads.
+
+29. ERROR: invalid JOIN type specified
+Explanations:
+This error occurs when a SQL query uses a JOIN type that is not supported by the SQL standard or by the database engine. Only specific JOIN keywords are valid, such as INNER, LEFT, RIGHT, FULL OUTER, and CROSS. 
+Using invalid combinations, misspelled JOIN types, or non-standard keywords causes the SQL parser to fail and raises error 42601. In company environments, this is considered a basic syntax violation and reflects insufficient validation or misunderstanding of relational join semantics.
+Use cases:
+•	Developers writing SQL manually and guessing JOIN keywords.
+•	Queries copied from tutorials or other databases with incompatible syntax.
+•	Auto-generated SQL from tools that incorrectly assemble JOIN clauses.
+Examples where applicable:
+Invalid JOIN type:
+SELECT *
+FROM orders
+SIDE JOIN customers ON orders.customer_id = customers.id;
+Invalid mixed JOIN syntax:
+SELECT *
+FROM orders
+LEFT INNER JOIN customers ON orders.customer_id = customers.id;
+
+Valid JOIN examples:
+SELECT *
+FROM orders
+INNER JOIN customers ON orders.customer_id = customers.id;
+
+Best practices:
+•	Use only standard, database-supported JOIN types.
+•	Follow company SQL style and validation guidelines.
+•	Test queries against the target database engine before deployment.
+Pitfalls:
+•	Assuming JOIN syntax is identical across all databases.
+•	Writing unclear or non-standard SQL that fails at runtime.
+•	Relying on guesswork instead of SQL specifications.
+
+30. ERROR: cannot perform JOIN on encrypted columns
+Explanations
+This error occurs when a JOIN condition is applied directly to encrypted columns that cannot be compared using standard equality or relational operators. Encryption transforms data into ciphertext, and unless the encryption scheme supports deterministic or searchable comparison, the database cannot evaluate join predicates on those columns. As a result, the engine raises error 42804. In company environments, this reflects a security-aware design constraint: encryption protects data confidentiality but limits how data can be queried and joined.
+Use cases:
+•	Databases using column-level encryption for sensitive fields such as SSNs, PANs, emails, or tokens.
+•	Systems where encryption is applied at rest and queries attempt to treat encrypted columns like plain text.
+•	Multi-tenant platforms isolating customer data through encryption.
+Examples where applicable
+Invalid join on encrypted columns:
+SELECT *
+FROM users u
+JOIN payments p
+ON u.email = p.email_encrypted;
+
+Decrypt before joining (controlled and minimal scope):
+SELECT *
+FROM users u
+JOIN payments p
+ON decrypt(u.email_encrypted) = decrypt(p.email_encrypted);
+
+Using a deterministic token for joining (recommended):
+SELECT *
+FROM users u
+JOIN payments p
+ON u.email_hash = p.email_hash;
+Example of schema redesign:
+
+Store a hashed or tokenized join key alongside encrypted data for safe joins.
+Best practices:
+•	Limit decryption to the smallest possible query scope.
+•	Separate security concerns from query performance through schema design.
+•	Involve security and database teams when designing encrypted joins.
+Pitfalls
+•	Decrypting large datasets during JOINs causes severe performance issues.
+•	Weak encryption choices made solely for query convenience.
+•	Assuming encrypted columns behave like normal text columns.
+
+
+
 
 
 
